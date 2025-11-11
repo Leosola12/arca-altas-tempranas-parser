@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Altas Tempranas ARCA — Parser Offline</title>
+
+  <style>
+    :root{
+      --bg:#f5f7fb; --card:#fff; --muted:#6b7280; --accent:#0ea5a4;
+      --danger:#ef4444; --glass:rgba(255,255,255,0.6);
+    }
+    [data-theme="dark"]{
+      --bg:#0b1220; --card:#071024; --muted:#94a3b8; --accent:#22d3ee;
+      --danger:#f87171; --glass:rgba(255,255,255,0.03);
+      color: #e6eef6;
+    }
+    *{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#eaf2f7);min-height:100vh;padding:24px;}
+    .wrap{max-width:1100px;margin:0 auto;}
+    .header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#7dd3fc);display:flex;align-items:center;justify-content:center;font-weight:700;color:#022;box-shadow:0 6px 18px rgba(2,6,23,0.12)}
+    h1{font-size:18px;margin:0}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+    .controls{display:flex;gap:12px;align-items:center}
+    .btn{background:var(--card);border:1px solid rgba(0,0,0,0.06);padding:8px 12px;border-radius:8px;cursor:pointer}
+    .btn.primary{background:var(--accent);color:#021;box-shadow:0 6px 18px rgba(11,85,85,0.08);border:0}
+    .btn.ghost{background:transparent;border:1px dashed rgba(0,0,0,0.08)}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 8px 24px rgba(8,15,30,0.04);margin-bottom:12px}
+    #drop{min-height:120px;border:2px dashed rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:center;border-radius:10px;cursor:pointer}
+    #drop.drag{border-color:var(--accent);box-shadow:0 8px 40px rgba(14,165,164,0.06)}
+    .row{display:flex;gap:12px;align-items:flex-start}
+    .col{flex:1}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid rgba(0,0,0,0.04);text-align:left}
+    th{background:rgba(0,0,0,0.02);font-weight:600}
+    .muted{color:var(--muted)}
+    .log{white-space:pre-wrap;font-family:monospace;font-size:12px;color:var(--muted);max-height:160px;overflow:auto;padding:8px;background:var(--glass);border-radius:8px}
+    .progress{height:10px;background:rgba(0,0,0,0.06);border-radius:6px;overflow:hidden}
+    .bar{height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa);width:0%}
+    .switch{display:inline-flex;align-items:center;gap:8px}
+    .small{font-size:12px;padding:6px 8px}
+    .flex-end{display:flex;justify-content:flex-end;gap:8px}
+    .table-wrap{max-height:360px;overflow:auto;border-radius:8px}
+    @media (max-width:880px){ .row{flex-direction:column} .controls{flex-wrap:wrap}}
+  </style>
+</head>
+<body data-theme="dark">
+  <div class="wrap">
+    <div class="header">
+      <div class="brand">
+        <div class="logo">AR</div>
+        <div>
+          <h1>Altas Tempranas ARCA — Parser</h1>
+          <p class="lead">Carga PDFs → Previsualizá → Exportá Excel (.xlsx). Funciona offline (ver instrucciones).</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="switch">
+          <label class="small muted">Tema</label>
+          <button class="btn small" id="toggleTheme">Cambiar</button>
+        </div>
+        <button class="btn" id="downloadSample">Ejemplo PDF</button>
+        <button class="btn primary" id="exportExcel">Exportar Excel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="drop">Arrastrá y soltá tus PDFs aquí, o hacé click para seleccionar (múltiples).</div>
+      <input id="fileInput" type="file" accept="application/pdf" multiple style="display:none" />
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <div class="progress" style="flex:1"><div class="bar" id="globalBar"></div></div>
+        <div class="muted small" id="status">0 archivos</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Vista previa</strong>
+          <div class="muted small">Registros: <span id="count">0</span></div>
+        </div>
+        <div class="table-wrap" id="tableWrap">
+          <table id="previewTable">
+            <thead>
+              <tr id="theadRow"></tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="col" style="max-width:360px">
+        <div class="card">
+          <strong>Logs & Progreso</strong>
+          <div class="log" id="log">Esperando archivos...</div>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn" id="clearLog">Limpiar log</button>
+            <button class="btn" id="saveLog">Guardar log</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <strong>Instrucciones Rápidas</strong>
+          <ol style="margin:8px 0 0 18px;color:var(--muted)">
+            <li>Arrastrá o seleccioná tus PDFs de Altas Tempranas (ARCA).</li>
+            <li>El parser extrae los campos principales y muestra la vista previa.</li>
+            <li>Click en <b>Exportar Excel</b> para descargar .xlsx.</li>
+            <li>Si querés full-offline: descargá PDF.js y SheetJS y usá la versión local.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:24px"></div>
+    <footer style="text-align:center;color:var(--muted)">Hecho con ❤️ — ARCA parser · Soporta múltiples archivos · No OCR</footer>
+  </div>
+
+<script>
+/* ---------------------------
+  Dependencias (CDN)
+  - PDF.js (pdfjsLib)
+  - SheetJS (XLSX)
+  Para uso 100% offline: descargar los archivos pdf.worker.js y xlsx.full.min.js y referenciarlos localmente:
+    - pdfjs-dist/build/pdf.min.js  + pdf.worker.min.js
+    - https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js
+----------------------------*/
+
+const PDFJS_CDN = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.8.162/build/pdf.min.js";
+const SHEETJS_CDN = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+
+/* carga dinámica de scripts para facilidad */
+function loadScript(url){ return new Promise((res, rej)=>{
+  const s = document.createElement('script'); s.src = url; s.onload = ()=>res(); s.onerror = ()=>rej(url); document.head.appendChild(s);
+});}
+
+/* Punto de entrada: cargar dependencias */
+(async function init(){
+  try{
+    await loadScript(PDFJS_CDN);
+    await loadScript(SHEETJS_CDN);
+    // si PDF.js requiere workerPath, intentar configurar
+    if(window.pdfjsLib){ 
+      // intenta configurar worker si no está configurado (CDN automatically sets workerSrc in many builds)
+      if(!window.pdfjsLib.GlobalWorkerOptions || !window.pdfjsLib.GlobalWorkerOptions.workerSrc){
+        // intenta autoconfigurar una ruta relativa; si no, PDF.js usará built-in
+        window.pdfjsLib.GlobalWorkerOptions = window.pdfjsLib.GlobalWorkerOptions || {};
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.8.162/build/pdf.worker.min.js';
+      }
+    }
+    log("Dependencias cargadas correctamente.");
+  }catch(e){
+    log("Error cargando dependencias: " + e);
+  }
+})();
+
+/* ------------------------------
+  UI y handlers
+-------------------------------*/
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const logEl = document.getElementById('log');
+const status = document.getElementById('status');
+const globalBar = document.getElementById('globalBar');
+const tbody = document.getElementById('tbody');
+const theadRow = document.getElementById('theadRow');
+const countEl = document.getElementById('count');
+
+let allRecords = [];
+const COLUMNS = [
+  "Nombre del archivo","Apellido y nombre","CUIL","Fecha Inicio","Obra Social",
+  "Modalidad de contrato","Situación de Revista","Convenio colectivo","Categoria","Puesto",
+  "Retribución pactada","Mod. Liq.","Domicilio de explotación","Actividad económica","Fecha/hora envío"
+];
+
+/* crear encabezado tabla */
+function renderHeader(){
+  theadRow.innerHTML = "";
+  COLUMNS.forEach(c=>{
+    const th = document.createElement('th'); th.textContent = c; theadRow.appendChild(th);
+  });
+}
+renderHeader();
+
+function log(msg){
+  const now = new Date().toLocaleTimeString();
+  logEl.textContent = `${now} — ${msg}\n` + logEl.textContent;
+}
+
+function updateStatus(n,total){
+  status.textContent = `${n} / ${total} archivos procesados`;
+  const pct = total ? Math.round((n/total)*100) : 0;
+  globalBar.style.width = pct + '%';
+}
+
+/* drag & drop */
+drop.addEventListener('click', ()=>fileInput.click());
+drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', e=>{ drop.classList.remove('drag'); });
+drop.addEventListener('drop', e=>{ e.preventDefault(); drop.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', ()=>handleFiles(fileInput.files));
+
+/* clear log */
+document.getElementById('clearLog').addEventListener('click', ()=>logEl.textContent = "");
+document.getElementById('saveLog').addEventListener('click', ()=>saveLogFile());
+
+/* sample download (placeholder) */
+document.getElementById('downloadSample').addEventListener('click', ()=>{
+  alert("Si querés, podés descargar el PDF de ejemplo desde tu repo o compartirlo. (Función placeholder)");
+});
+
+/* theme toggle */
+document.getElementById('toggleTheme').addEventListener('click', ()=>{
+  const el = document.body;
+  el.dataset.theme = el.dataset.theme === 'dark' ? 'light' : 'dark';
+});
+
+/* export excel */
+document.getElementById('exportExcel').addEventListener('click', ()=>{ exportToExcel(allRecords); });
+
+/* ------------------------------
+  PARSING logic
+  - buscamos por "Datos del Empleado" para separar bloques
+  - usamos regex flexibles para tomar campos
+-------------------------------*/
+
+function safeRegex(pattern, text, flags = 'i'){
+  const r = new RegExp(pattern, flags + 'm');
+  const m = r.exec(text);
+  return m ? m[1].trim() : null;
+}
+
+function parseBlock(bloque){
+  // limpia dobles espacios
+  const b = bloque.replace(/\r/g,'\n');
+  const record = {};
+  record["Apellido y nombre"] = safeRegex('Apellido y nombre:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["CUIL"] = safeRegex('CUIL:\\s*([0-9\\-]+)', b) || null;
+  record["Fecha Inicio"] = safeRegex('Fecha Inicio:\\s*([0-9/]+)', b) || null;
+  record["Obra Social"] = safeRegex('Obra Social:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Modalidad de contrato"] = safeRegex('Modalidad de contrato:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Situación de Revista"] = safeRegex('Situación de Revista:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Convenio colectivo"] = safeRegex('Convenio colectivo:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Categoria"] = safeRegex('Categoria:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Puesto"] = safeRegex('Puesto:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  // retribución, captar 350.000,00 o 364222,70
+  const sueldo = safeRegex('Retrib\\.?\\s*pactada:\\s*\\$?([0-9\\.,]+)', b);
+  if(sueldo){
+    try{
+      record["Retribución pactada"] = Number(sueldo.replace(/\./g,'').replace(',', '.'));
+    }catch(e){
+      record["Retribución pactada"] = null;
+    }
+  } else record["Retribución pactada"] = null;
+
+  record["Mod. Liq."] = safeRegex('Mod\\. Liq\\.:?\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Domicilio de explotación"] = safeRegex('Domicilio de explotación:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Actividad económica"] = safeRegex('Actividad económica:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+  record["Fecha/hora envío"] = safeRegex('Fecha - hora de envío:\\s*([\\S\\s]*?)(?:\\n|$)', b) || null;
+
+  return record;
+}
+
+/* Procesar archivos PDF con PDF.js - devuelve promesa con registros */
+async function processPDFFile(file){
+  log(`Iniciando: ${file.name}`);
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8 = new Uint8Array(arrayBuffer);
+
+  const loadingTask = window.pdfjsLib.getDocument({data: uint8});
+  const pdf = await loadingTask.promise;
+  log(`${file.name} → páginas: ${pdf.numPages}`);
+
+  let records = [];
+  for(let p=1; p<=pdf.numPages; p++){
+    try{
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      // concatenar items en texto con saltos razonables
+      const texts = content.items.map(i=> (i.str ? i.str : '') ).join('\n');
+      // separar por "Datos del Empleado"
+      const partes = texts.split(/Datos del Empleado/);
+      // cada parte (excepto la 0) es una alta o repeticiones
+      for(let i=1;i<partes.length;i++){
+        const bloque = partes[i];
+        const rec = parseBlock(bloque);
+        // guardar sólo si hay cuil o nombre
+        if(rec["CUIL"] || rec["Apellido y nombre"]) {
+          rec["Nombre del archivo"] = file.name.replace(/\.[^/.]+$/, "");
+          records.push(rec);
+        }
+      }
+      log(`  ${file.name} - página ${p} procesada (altas detectadas en página: ${partes.length-1})`);
+    }catch(err){
+      log(`  Error en ${file.name} página ${p}: ${err}`);
+    }
+  }
+  return records;
+}
+
+/* Manejar lista de archivos */
+async function handleFiles(fileList){
+  const files = Array.from(fileList).filter(f=> f.type==='application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+  if(files.length===0){ log("No hay PDFs en la selección."); return; }
+  allRecords = []; tbody.innerHTML = ""; countEl.textContent = "0"; logEl.textContent = "";
+
+  updateStatus(0, files.length);
+  for(let i=0;i<files.length;i++){
+    const file = files[i];
+    try{
+      const recs = await processPDFFile(file);
+      allRecords = allRecords.concat(recs);
+      renderTableRows(recs);
+      updateStatus(i+1, files.length);
+    }catch(err){
+      log("Error procesando " + file.name + " : " + err);
+    }
+  }
+  countEl.textContent = allRecords.length;
+  log(`Procesamiento finalizado. Registros totales: ${allRecords.length}`);
+}
+
+/* render rows al vuelo (evita re-render masivo) */
+function renderTableRows(records){
+  for(const r of records){
+    const tr = document.createElement('tr');
+    COLUMNS.forEach(col=>{
+      const td = document.createElement('td');
+      let v = r[col] !== undefined ? r[col] : "";
+      if(typeof v === 'number') v = v.toFixed(2);
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+/* EXPORTAR EXCEL con SheetJS */
+function exportToExcel(records){
+  if(!records || records.length===0){ alert("No hay registros para exportar."); return; }
+  // preparar datos con columnas ordenadas
+  const ws_data = [COLUMNS];
+  for(const r of records){
+    const row = COLUMNS.map(c=>{
+      let v = r[c];
+      if(typeof v === 'number') return v;
+      return v == null ? "" : String(v);
+    });
+    ws_data.push(row);
+  }
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(ws_data);
+  // crear sheets por archivo (opcional): aquí creamos una hoja por archivo para mantener tu layout original
+  // Agrupar por "Nombre del archivo"
+  const byFile = {};
+  for(const r of records){
+    const name = r["Nombre del archivo"] || "sin_nombre";
+    byFile[name] = byFile[name] || [];
+    byFile[name].push(r);
+  }
+  // limpiar libro y crear una hoja por archivo
+  const wb2 = XLSX.utils.book_new();
+  for(const fname of Object.keys(byFile)){
+    const dataA = [COLUMNS];
+    for(const r of byFile[fname]){
+      dataA.push(COLUMNS.map(c => (r[c] == null ? "" : (typeof r[c]==='number' ? r[c] : String(r[c])))));
+    }
+    // Sheet name max 31 chars
+    const sheetName = fname.substring(0,31);
+    const wsx = XLSX.utils.aoa_to_sheet(dataA);
+    XLSX.utils.book_append_sheet(wb2, wsx, sheetName);
+  }
+  const wbout = XLSX.write(wb2, {bookType:'xlsx', type:'array'});
+  // descargar
+  const blob = new Blob([wbout], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Altas_Tempranas_ARCA.xlsx';
+  document.body.appendChild(a); a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  log("Excel generado y descargado.");
+}
+
+/* guardar log */
+function saveLogFile(){
+  const txt = logEl.textContent;
+  const blob = new Blob([txt], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'altas_parse_log.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  log("Log guardado.");
+}
+
+/* Prevent accidental navigation during processing */
+window.addEventListener('beforeunload', function(e){
+  if(globalBar.style.width && Number(globalBar.style.width.replace('%',''))>0 && Number(globalBar.style.width.replace('%',''))<100){
+    e.preventDefault(); e.returnValue = '';
+  }
+});
+
+</script>
+</body>
+</html>
