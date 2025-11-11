@@ -10,6 +10,11 @@ El script:
 
 Ideal para estudios contables, recursos humanos o automatización documental.
 
+Está en varias versiones para que ejecutes el que más comodo te resulte. 
+HTML (portable y ejecutable desde Chrome sin requerir instalaciones)
+Versión GOOGLE COLAB (para ejecutar desde ahí si te resulta mas util)
+Versión .py para ejecutar localmente
+
 ---
 
 ## 📌 Funcionalidades principales
@@ -66,14 +71,9 @@ Uso libre. Podés modificarlo, reutilizarlo o adaptarlo.
 
 2) Crear un nuevo notebook y pegar el script completo.
 
-3) Ejecutar la primera celda:
+3) Ejecutar la celda:
    - Instala pdfplumber, openpyxl y pandas.
-
-4) Ejecutar la celda donde aparece:
-   uploaded = files.upload()
    - Subir todos los PDF de Altas Tempranas generados por ARCA.
-
-5) Ejecutar las siguientes celdas normalmente.
    El script extraerá todos los campos automáticamente.
 
 6) Al final se generará:
