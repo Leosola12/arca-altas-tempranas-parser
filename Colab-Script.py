@@ -3,67 +3,86 @@
 
 import pdfplumber
 import pandas as pd
+import re
+from google.colab import files
 import os
 
-# ⬇️ Subir archivos PDF
-from google.colab import files
+# Subir PDFs
 uploaded = files.upload()
 
-# ⬇️ Función para extraer los datos de un PDF de ARCA
-def extraer_datos(pdf_path, nombre_archivo):
+def safe_extract(pattern, text):
+    m = re.search(pattern, text, re.IGNORECASE)
+    return m.group(1).strip() if m else None
+
+def extraer_altas(pdf_path, nombre_archivo):
     data = []
+
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            text = page.extract_text()
-            bloques = text.split("CUIL del trabajador:")
-            for bloque in bloques[1:]:
-                try:
-                    trabajador = {}
-                    trabajador["Nombre del archivo"] = nombre_archivo
+            t = page.extract_text()
 
-                    trabajador["CUIL del empleado"] = bloque.split("\n")[0].strip()
-                    trabajador["Apellido y nombre del empleado"] = bloque.split("Apellido y nombre del trabajador:")[1].split("\n")[0].strip()
-                    trabajador["Fecha de inicio"] = bloque.split("Fecha de inicio de la relación laboral:")[1].split("\n")[0].strip()
-                    trabajador["Obra social"] = bloque.split("Obra social:")[1].split("\n")[0].strip()
-                    trabajador["Modalidad de contrato"] = bloque.split("Modalidad de contratación:")[1].split("\n")[0].strip()
-                    trabajador["Situación de revista"] = "Activo"
-                    trabajador["Convenio colectivo"] = bloque.split("Convenio colectivo:")[1].split("\n")[0].strip()
-                    trabajador["Categoría / Puesto"] = bloque.split("Categoría:")[1].split("\n")[0].strip()
+            # Separar por altas
+            bloques = t.split("Datos del Empleado")
+            for bloque in bloques[1:]:  # descartar encabezado
+                empleado = {}
+                empleado["Nombre del archivo"] = nombre_archivo
 
+                # Campos principales
+                empleado["Apellido y nombre"] = safe_extract(r"Apellido y nombre:\s*(.*)", bloque)
+                empleado["CUIL"] = safe_extract(r"CUIL:\s*([0-9\-]+)", bloque)
+                empleado["Fecha Inicio"] = safe_extract(r"Fecha Inicio:\s*([0-9/]+)", bloque)
+
+                empleado["Obra Social"] = safe_extract(r"Obra Social:\s*(.*)", bloque)
+                empleado["Modalidad de contrato"] = safe_extract(r"Modalidad de contrato:\s*(.*)", bloque)
+                empleado["Situación de Revista"] = safe_extract(r"Situación de Revista:\s*(.*)", bloque)
+
+                empleado["Convenio colectivo"] = safe_extract(r"Convenio colectivo:\s*(.*)", bloque)
+                empleado["Categoria"] = safe_extract(r"Categoria:\s*(.*)", bloque)
+                empleado["Puesto"] = safe_extract(r"Puesto:\s*(.*)", bloque)
+
+                # Retribución pactada
+                sueldo = safe_extract(r"Retrib\. pactada:\s*\$?([\d\.,]+)", bloque)
+                if sueldo:
                     try:
-                        trabajador["Retribución pactada"] = float(bloque.split("Remuneración pactada:")[1].split("\n")[0].replace(".", "").replace(",", ".").replace("$", "").strip())
+                        empleado["Retribución pactada"] = float(sueldo.replace(".", "").replace(",", "."))
                     except:
-                        trabajador["Retribución pactada"] = None
+                        empleado["Retribución pactada"] = None
+                else:
+                    empleado["Retribución pactada"] = None
 
-                    trabajador["Modalidad de liquidación"] = bloque.split("Modalidad de liquidación:")[1].split("\n")[0].strip()
-                    trabajador["Domicilio de explotación"] = bloque.split("Domicilio de explotación:")[1].split("\n")[0].strip()
-                    trabajador["Actividad económica"] = bloque.split("Actividad principal:")[1].split("\n")[0].strip()
-                    trabajador["Fecha/hora de alta"] = bloque.split("Fecha/hora de carga:")[1].split("\n")[0].strip() if "Fecha/hora de carga:" in bloque else None
-                    trabajador["Nombre del empleador"] = bloque.split("Empleador:")[1].split("\n")[0].strip()
-                    trabajador["CUIT del empleador"] = bloque.split("CUIT del empleador:")[1].split("\n")[0].strip()
+                empleado["Mod. Liq."] = safe_extract(r"Mod\. Liq\.\:\s*(.*)", bloque)
+                empleado["Domicilio de explotación"] = safe_extract(r"Domicilio de explotación:\s*(.*)", bloque)
+                empleado["Actividad económica"] = safe_extract(r"Actividad económica:\s*(.*)", bloque)
 
-                    data.append(trabajador)
-                except:
-                    pass
+                empleado["Fecha/hora envío"] = safe_extract(r"Fecha - hora de envío:\s*(.*)", bloque)
+
+                # Guardar solo si al menos hubo CUIL o Apellido y nombre
+                if empleado["CUIL"] or empleado["Apellido y nombre"]:
+                    data.append(empleado)
+
     return data
 
 
-# ⬇️ Procesar todos los PDFs subidos
-todos_los_datos = []
-for nombre_archivo in uploaded.keys():
-    datos = extraer_datos(nombre_archivo, os.path.splitext(nombre_archivo)[0])
-    todos_los_datos.extend(datos)
+# ---- Procesamiento total ----
 
-# ⬇️ Convertir a DataFrame
-df = pd.DataFrame(todos_los_datos)
+todos = []
 
-# ⬇️ Generar un Excel con una hoja por empresa
-ruta_excel = "Resumen_Altas_Tempranas.xlsx"
+for filename in uploaded.keys():
+    datos = extraer_altas(filename, os.path.splitext(filename)[0])
+    todos.extend(datos)
+
+df = pd.DataFrame(todos)
+
+# Control por si vino vacío
+if df.empty:
+    print("⚠️ No se encontraron datos en los PDFs.")
+    df = pd.DataFrame({"Mensaje": ["No se detectaron altas en los PDFs subidos"]})
+
+# Exportar a Excel con una hoja por PDF
+ruta_excel = "Altas_Tempranas_ARCA.xlsx"
 with pd.ExcelWriter(ruta_excel, engine="openpyxl") as writer:
-    for empresa in df["Nombre del archivo"].unique():
-        hoja = empresa[:31]
-        df_empresa = df[df["Nombre del archivo"] == empresa].drop(columns=["Nombre del archivo"])
-        df_empresa.to_excel(writer, sheet_name=hoja, index=False)
+    for archivo in df["Nombre del archivo"].unique():
+        hoja = archivo[:31]  # límite Excel
+        df[df["Nombre del archivo"] == archivo].to_excel(writer, sheet_name=hoja, index=False)
 
-# ⬇️ Descargar archivo Excel
 files.download(ruta_excel)
