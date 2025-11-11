@@ -6,7 +6,7 @@ El script:
 ✅ Extrae la información de cada alta individual.  
 ✅ Procesa tantos PDFs como subas.  
 ✅ Limpia y estructura los datos.  
-✅ Genera un archivo Excel final con una hoja por empresa.
+✅ Genera un archivo Excel final con una hoja por archivo.
 
 Ideal para estudios contables, recursos humanos o automatización documental.
 
@@ -29,7 +29,7 @@ Ideal para estudios contables, recursos humanos o automatización documental.
   - Actividad económica  
   - Fecha/hora de carga  
   - Nombre y CUIT del empleador  
-- Exportación a Excel con una hoja por empresa
+- Exportación a Excel con una hoja por archivo
 - Compatible 100% con Google Colab
 
 ---
@@ -43,7 +43,7 @@ Ideal para estudios contables, recursos humanos o automatización documental.
 ---
 
 ## 📁 Archivo generado
-`Resumen_Altas_Tempranas.xlsx`, con una hoja por empresa.
+`Resumen_Altas_Tempranas.xlsx`, con una hoja por archivo.
 
 ---
 
